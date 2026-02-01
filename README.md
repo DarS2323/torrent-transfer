@@ -103,7 +103,50 @@ In qBittorrent, set your default save path to the SSD:
 2. Set **Default Save Path** to: `/Volumes/WD_BLACK_SN770_1TB/torrents`
 3. Click **Save**
 
-## Usage
+## Automatic Mode (qBittorrent Integration)
+
+### Setup qBittorrent Auto-Transfer
+
+The recommended way to use this script is to have qBittorrent automatically trigger it when torrents complete:
+
+1. **Enable "Run on Completion" in qBittorrent:**
+   - Go to **Settings** → **Downloads**
+   - Find **"Run external program on torrent completion"**
+   - Check the box to enable it
+   - Enter the following command (use absolute path):
+     ```
+     /Volumes/WD_BLACK_SN770_1TB/code_claude/scripts/torrent-transfer/qbittorrent-completion.sh "%I" "%N"
+     ```
+
+2. **How It Works:**
+   - When a torrent completes, qBittorrent calls `qbittorrent-completion.sh`
+   - The wrapper script launches `torrent-transfer.sh` in the background
+   - qBittorrent continues immediately without waiting
+   - Transfer happens when Plex streams ≤ 1 (configurable)
+   - Files move to NAS automatically
+   - Local SSD copy is cleaned up
+
+3. **Monitor Automatic Transfers:**
+   ```bash
+   # Watch completion triggers
+   tail -f /Volumes/WD_BLACK_SN770_1TB/code_claude/scripts/torrent-transfer/qbittorrent-completion.log
+
+   # Watch transfer progress
+   tail -f /Volumes/WD_BLACK_SN770_1TB/code_claude/scripts/torrent-transfer/torrent-transfer.log
+   ```
+
+### qBittorrent Parameters
+
+The script uses these parameters from qBittorrent:
+- `%I` - Info hash (torrent hash) - Required
+- `%N` - Torrent name - For logging
+
+**Important Notes:**
+- Always use the full absolute path to `qbittorrent-completion.sh`
+- The script runs in the background so qBittorrent doesn't wait
+- Transfers wait for Plex to have ≤1 active stream (configurable in `torrent-transfer.conf`)
+
+## Manual Usage
 
 ### Check All Torrents Ready for Transfer
 
@@ -155,7 +198,7 @@ Edit `torrent-transfer.conf` to customize:
 | `TAUTULLI_HOST` | Tautulli host | `localhost` |
 | `TAUTULLI_PORT` | Tautulli port | `8181` |
 | `TAUTULLI_API_KEY` | Tautulli API key | (required) |
-| `MAX_ACTIVE_STREAMS` | Max Plex streams before waiting | `0` (wait for idle) |
+| `MAX_ACTIVE_STREAMS` | Max Plex streams before waiting | `1` (wait for ≤1 stream) |
 | `CHECK_INTERVAL` | Seconds between Plex checks | `300` (5 minutes) |
 | `VERIFY_AFTER_TRANSFER` | Verify torrent after transfer | `true` |
 
@@ -340,10 +383,12 @@ The torrent continues seeding from the NAS location.
 
 ## Files
 
-- `torrent-transfer.sh` - Main script
+- `qbittorrent-completion.sh` - qBittorrent completion hook wrapper (for automatic mode)
+- `torrent-transfer.sh` - Main transfer script
 - `torrent-transfer.conf` - Configuration file (auto-generated on first run)
-- `torrent-transfer.log` - Activity log
-- `README-TORRENT-TRANSFER.md` - This documentation
+- `qbittorrent-completion.log` - Log of qBittorrent completion triggers
+- `torrent-transfer.log` - Detailed transfer activity log
+- `README.md` - This documentation
 
 ## Security Notes
 
@@ -358,6 +403,85 @@ For issues or questions:
 1. Check the log file: `torrent-transfer.log`
 2. Verify configuration in `torrent-transfer.conf`
 3. Test individual components (qBittorrent API, Tautulli API, NFS mount)
+
+## Cross-Seed Setup (Ultra.cc Seedbox)
+
+Cross-seed finds matching torrents across trackers to improve your ratio. This runs on the Ultra.cc seedbox alongside qBittorrent.
+
+### Prerequisites
+
+- Ultra.cc seedbox with SSH access
+- qBittorrent running on Ultra.cc
+
+### Prowlarr Setup
+
+Cross-seed needs Prowlarr running on the seedbox to search your trackers via Torznab API.
+
+1. In the Ultra.cc control panel (UCP), go to **Installers** → find **Prowlarr** → click **Install**
+2. Note the URL and port assigned after installation
+3. Open Prowlarr's web UI and go to **Indexers** → **Add Indexer**
+4. Search for your tracker, enter your credentials/passkey, test and save
+5. Back on the **Indexers** page, copy the **Torznab Feed** URL for the indexer you added — it looks like:
+   ```
+   http://localhost:<prowlarr-port>/1/api?apikey=<prowlarr-api-key>
+   ```
+   The indexer ID (`1`) may differ if you have multiple indexers.
+
+### Cross-Seed Installation
+
+SSH into your seedbox and run the following:
+
+```bash
+# 1. Install Node.js 22 LTS
+bash <(wget -qO- https://scripts.ultra.cc/util-v2/LanguageInstaller/Node-Installer/main.sh)
+
+# 2. Install Python 3.10+
+bash <(wget -qO- https://scripts.ultra.cc/util-v2/LanguageInstaller/Python-Installer/main.sh)
+```
+
+**Log out and back in** to update your PATH, then:
+
+```bash
+# 3. Install cross-seed
+bash <(wget -qO- https://raw.githubusercontent.com/zakkarry/cross-seed-source-build/refs/heads/master/install_shared_env_xs.sh)
+
+# 4. Generate config and API key
+cross-seed gen-config
+cross-seed api-key
+```
+
+### Configuration
+
+Edit `~/.cross-seed/config.js`:
+
+```js
+module.exports = {
+  qbittorrentUrl: "http://localhost:<qbit-port>",
+  torrentDir: "/home/<username>/.local/share/qBittorrent/BT_backup",
+  dataDirs: ["/home/<username>/downloads"],
+  torznab: [
+    "http://localhost:<prowlarr-port>/1/api?apikey=<prowlarr-api-key>",
+  ],
+  matchMode: "flexible",
+  action: "inject",
+};
+```
+
+Replace `<username>`, `<qbit-port>`, `<prowlarr-port>`, and `<prowlarr-api-key>` with your Ultra.cc values.
+
+### Usage
+
+```bash
+# Run a search manually
+cross-seed search
+```
+
+> **Note:** Ultra.cc recommends against running cross-seed in daemon mode on shared infrastructure due to the unauthenticated API. Use manual searches or cron instead.
+
+### References
+
+- [Ultra.cc cross-seed docs](https://docs.ultra.cc/community/cross-seed)
+- [cross-seed official docs](https://www.cross-seed.org/)
 
 ## License
 
