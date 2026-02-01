@@ -483,6 +483,20 @@ cross-seed search
 - [Ultra.cc cross-seed docs](https://docs.ultra.cc/community/cross-seed)
 - [cross-seed official docs](https://www.cross-seed.org/)
 
+## TODO / Next Steps
+
+- [ ] SSH into Ultra.cc and install Node.js + Python prerequisites
+- [ ] Install cross-seed via the shared env script
+- [ ] Install Prowlarr from the Ultra.cc app installer (UCP)
+- [ ] Add French tracker as an indexer in Prowlarr and grab the Torznab URL
+- [ ] Configure `~/.cross-seed/config.js` with qBittorrent port, paths, and Torznab URL
+- [ ] Run `cross-seed search` to verify it works
+- [ ] Set up a cron job for periodic cross-seed searches
+- [ ] Investigate qbit-manage on Ultra.cc for automated torrent tagging/cleanup
+- [ ] Keep an eye on [qui](https://github.com/autobrr/qui) as a potential replacement for cross-seed + qbit-manage
+- [ ] Rotate credentials exposed in `torrent-transfer.conf` (committed to git in plaintext)
+- [ ] Add `torrent-transfer.conf` to `.gitignore`
+
 ## License
 
 Part of the code_claude media server automation ecosystem.
